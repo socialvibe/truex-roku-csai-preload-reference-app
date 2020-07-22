@@ -162,7 +162,8 @@ sub launchVideoAds()
     ? "TRUE[X] >>> ContentFlow::launchVideoAds() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
     ? "TRUE[X] >>> ContentFlow::launchVideoAds() - ad content nodes: " ; decodedData.videoAdPlaylist.getChildCount()
 
-    m.videoPlayer.content = decodedData.videoAdPlaylist.getChild(0)
+    m.videoPlayer.content = decodedData.videoAdPlaylist
+    m.videoPlayer.contentIsPlaylist = true
     m.videoPlayer.position = 0
     m.videoPlayer.control = "play"
     m.playingVideoAds = true
@@ -364,9 +365,12 @@ sub resumeContentStream()
     videoContent.playStart = 0
     m.videoPlayer.content = videoContent
 
+    m.videoPlayer.contentIsPlaylist = false
     m.videoPlayer.control = "play"
-    m.videoPlayer.seek = m.videoPositionAtAdBreakPause
-    ? "TRUE[X] >>> ContentFlow::resumeContentStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(m.videoPositionAtAdBreakPause) + ")"
+    positionToResumeAt = 0
+    if m.videoPositionAtAdBreakPause <> invalid then positionToResumeAt = m.videoPositionAtAdBreakPause
+    m.videoPlayer.seek = positionToResumeAt
+    ? "TRUE[X] >>> ContentFlow::resumeContentStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(positionToResumeAt) + ")"
 end sub
 
 '-----------------------------------------------------------------------------
