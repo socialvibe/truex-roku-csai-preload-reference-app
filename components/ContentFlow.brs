@@ -117,17 +117,16 @@ sub launchTruexAd()
     decodedData = m.currentAdBreak
     if decodedData = invalid then return
 
-    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting ad at video position: ";m.videoPlayer.position
+    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
 
     ' Hedge against Roku playhead imprecision by adding buffer so that non choice card content is not shown
-    m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
+    ' m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
     ' Note: bumping the seek interval as the Roku player seems to have trouble seeking ahead to a specific time based on the type of stream.
-    m.streamSeekDuration = decodedData.cardDuration + 3
+    ' m.streamSeekDuration = decodedData.cardDuration + 3
     ' Populating the test ad from the local mock payload
     ' In a real world situation, the adParameters returned from the ad server will be populated similarly 
     ' for the One Stage type integration we're demonstrating here.
-    adPayload = ParseJson(ReadAsciiFile(decodedData.vastPayload).trim())
-    adPayload.placement_hash = decodedData.placementHash
+    adPayload = decodedData.truexParameters
 
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - instantiating TruexAdRenderer ComponentLibrary..."
 
@@ -141,9 +140,9 @@ sub launchTruexAd()
         adParameters: adPayload,
         supportsUserCancelStream: true, ' enables cancelStream event types, disable if Channel does not support
         slotType: UCase(getCurrentAdBreakSlotType()),
-        logLevel: 1, ' Optional parameter, set the verbosity of true[X] logging, from 0 (mute) to 5 (verbose), defaults to 5
-        channelWidth: 1920, ' Optional parameter, set the width in pixels of the channel's interface, defaults to 1920
-        channelHeight: 1080 ' Optional parameter, set the height in pixels of the channel's interface, defaults to 1080
+        logLevel: 5, ' Optional parameter, set the verbosity of true[X] logging, from 0 (mute) to 5 (verbose), defaults to 5
+        channelWidth: 1280, ' Optional parameter, set the width in pixels of the channel's interface, defaults to 1920
+        channelHeight: 720 ' Optional parameter, set the height in pixels of the channel's interface, defaults to 1080
     }
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - initializing TruexAdRenderer with action=";tarInitAction
     m.adRenderer.action = tarInitAction
@@ -159,38 +158,30 @@ end sub
 ' trigger the instantiation of the true[X] experience.
 ''--------------------------------------------------------------------------------------------------------
 sub onVideoPositionChange()
-    ' ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: " + Str(m.videoPlayer.position) + " duration: " + Str(m.videoPlayer.duration)
+    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: " + Str(m.videoPlayer.position) + " duration: " + Str(m.videoPlayer.duration)
     if m.vmap = invalid or m.vmap.Count() = 0 then return
 
     playheadInPod = false
 
     ' Check to see if playback has entered a true[X] spot, and if so, start true[X].
     for each vmapEntry in m.vmap
-        if vmapEntry.startOffset <> invalid and vmapEntry.endOffset <> invalid then
-            if m.videoPlayer.position >= vmapEntry.startOffset and m.videoPlayer.position <= vmapEntry.endOffset then
-                if m.adRenderer = invalid
-                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: in pod: " ; vmapEntry.breakId
-                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching tag: " ; vmapEntry.vastUrl
-                    m.currentAdBreak = vmapEntry
+        if vmapEntry.startOffset <> invalid and vmapEntry.played <> invalid then
+            if m.videoPlayer.position >= vmapEntry.startOffset and not vmapEntry.played then
+                ' we have entered one of the defined ad pods, stop main stream and trigger ads
+                ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: hit a pod: " ; vmapEntry
+                vmapEntry.played = true
+                m.currentAdBreak = vmapEntry
+                m.videoPlayer.control = "stop"
+
+                if m.adRenderer = invalid and vmapEntry.truexParameters <> invalid then
+                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
                     launchTruexAd()
-                end if
-                ' Do not allow video scrubbing while in the true[X] opt-in flow
-                m.videoPlayer.enableTrickPlay = false
-                playheadInPod = true
-            else
-                m.videoPlayer.enableTrickPlay = true
+                else
+                    ' TODO play video ads
+                end if                
             end if
         end if 
     end for
-
-    if m.adRenderer <> invalid and not playheadInPod then
-        ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: exiting pod, dismissing TAR"
-        ' If we are not in a pod and TAR is active that is taken to mean playback has auto-advanced past the opt-in card 
-        ' into the rest of the video ads without the viewer taking action to opt-in or out. 
-        ' This scenario is known as an auto-advance opt-out (non user initiated opt-out)
-        ' Therefore terminate TAR at this stage.
-        m.adRenderer.action = { type : "stop" }
-    end if
 
     m.lastVideoPosition = m.videoPlayer.position
 end sub
@@ -238,6 +229,7 @@ end function
 sub preprocessVmapData(vmapJson as object)
     if vmapJson = invalid or Type(vmapJson) <> "roArray" return
     m.vmap = []
+    ? "TRUE[X] >>> ContentFlow::preprocessVmapData, vmapJson" ; vmapJson
 
     for i = 0 to vmapJson.Count() - 1
         vmapEntry = vmapJson[i]
@@ -249,6 +241,7 @@ sub preprocessVmapData(vmapJson as object)
         if timeOffset <> invalid and breakId <> invalid and podAds <> invalid then
             newPod.timeOffset = timeOffset
             newPod.breakId = breakId
+            newPod.played = false
             
             ' parse out the ad insertion point
             timeOffset = timeOffset.Left(8)
@@ -257,7 +250,7 @@ sub preprocessVmapData(vmapJson as object)
             ? "TRUE[X] >>> ContentFlow::preprocessVmapData, #" ; i + 1 ; ", timeOffset: "; timeOffset ; ", start: " ; timeOffsetSecs
             newPod.startOffset = timeOffsetSecs
             newPod.podindex = i
-            newPod.videoAdPlaylist = createObject("RoSGNode", "ContentNode")            
+            newPod.videoAdPlaylist = createObject("RoSGNode", "ContentNode")      
 
             for j = 0 to podAds.Count() - 1
                 adEntry = podAds[j]
@@ -275,6 +268,7 @@ sub preprocessVmapData(vmapJson as object)
                 end if                
             end for
 
+            ? "TRUE[X] >>> ContentFlow::preprocessVmapData, adding pod: " ; newPod
             m.vmap.Push(newPod)
         end if
     end for

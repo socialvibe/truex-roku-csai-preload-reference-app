@@ -1,6 +1,6 @@
 # Copyright (c) 2019 true[X], Inc. All rights reserved.
 
-APPNAME = TruexRokuReferenceApp
+APPNAME = TruexRokuCSAIReferenceApp
 IMPORTS =
 ROKU_TEST_ID = 1
 ROKU_TEST_WAIT_DURATION = 5
