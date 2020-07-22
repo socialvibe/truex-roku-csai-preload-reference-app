@@ -19,9 +19,11 @@ sub init()
     ' get reference to video player
     m.videoPlayer = m.top.findNode("videoPlayer")
     m.skipAds = false
+    m.playingVideoAds = false
+    m.streamUrl = m.streamData.url
 
     ? "TRUE[X] >>> ContentFlow::init() - starting video stream=";m.streamData;"..."
-    beginStream(m.streamData.url)
+    beginStream(m.streamUrl)
 end sub
 
 '-------------------------------------------
@@ -109,7 +111,7 @@ end sub
 ' Launches the true[X] renderer based on the current ad break as detected by onVideoPositionChange
 '--------------------------------------------------------------------------------------------------------
 sub launchTruexAd()
-    ? "TRUE[X] >>> ContentFlow::onTruexAdDataReceived()"
+    ? "TRUE[X] >>> ContentFlow::launchTruexAd()"
 
     decodedData = m.currentAdBreak
     if decodedData = invalid then return
@@ -137,7 +139,7 @@ sub launchTruexAd()
         adParameters: adPayload,
         supportsUserCancelStream: true, ' enables cancelStream event types, disable if Channel does not support
         slotType: UCase(getCurrentAdBreakSlotType()),
-        logLevel: 5, ' Optional parameter, set the verbosity of true[X] logging, from 0 (mute) to 5 (verbose), defaults to 5
+        logLevel: 1, ' Optional parameter, set the verbosity of true[X] logging, from 0 (mute) to 5 (verbose), defaults to 5
         channelWidth: 1280, ' Optional parameter, set the width in pixels of the channel's interface, defaults to 1920
         channelHeight: 720 ' Optional parameter, set the height in pixels of the channel's interface, defaults to 1080
     }
@@ -151,13 +153,28 @@ sub launchTruexAd()
     m.adRenderer.SetFocus(true)
 end sub
 
+sub launchVideoAds()
+    ? "TRUE[X] >>> ContentFlow::launchVideoAds()"
+
+    decodedData = m.currentAdBreak
+    if decodedData = invalid then return
+
+    ? "TRUE[X] >>> ContentFlow::launchVideoAds() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
+    ? "TRUE[X] >>> ContentFlow::launchVideoAds() - ad content nodes: " ; decodedData.videoAdPlaylist.getChildCount()
+
+    m.videoPlayer.content = decodedData.videoAdPlaylist.getChild(0)
+    m.videoPlayer.position = 0
+    m.videoPlayer.control = "play"
+    m.playingVideoAds = true
+end sub
+
 '--------------------------------------------------------------------------------------------------------
 ' Callback triggered when the video player's playhead changes. Used to keep track of ad pods and 
 ' trigger the instantiation of the true[X] experience.
 ''--------------------------------------------------------------------------------------------------------
 sub onVideoPositionChange()
     ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: " + Str(m.videoPlayer.position) + " duration: " + Str(m.videoPlayer.duration)
-    if m.vmap = invalid or m.vmap.Count() = 0 then return
+    if m.vmap = invalid or m.vmap.Count() = 0 or m.playingVideoAds then return
 
     playheadInPod = false
 
@@ -171,17 +188,37 @@ sub onVideoPositionChange()
                 m.currentAdBreak = vmapEntry
                 m.videoPlayer.control = "stop"
 
-                if m.adRenderer = invalid and vmapEntry.truexParameters <> invalid then
-                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
-                    launchTruexAd()
-                else
-                    ' TODO play video ads
+                if vmapEntry.truexParameters <> invalid then
+                    if m.adRenderer = invalid then
+                        ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
+                        launchTruexAd()
+                    end if
+                else if vmapEntry.videoAdPlaylist <> invalid then
+                    launchVideoAds()
                 end if                
             end if
         end if 
     end for
 
     m.lastVideoPosition = m.videoPlayer.position
+end sub
+
+sub onVideoStateChange()
+    ? "TRUE[X] >>> ContentFlow::onVideoStateChange: " ; m.videoPlayer.state ; " contentIndex: " ; m.videoPlayer.contentIndex
+
+     if m.videoPlayer.state = "finished" then
+        if m.playingVideoAds then
+            m.playingVideoAds = false
+            resumeContentStream()
+        else
+            tearDown()
+            m.top.event = { trigger: "cancelStream" }
+        end if
+    else if m.videoPlayer.state = "error" then
+        ? "TRUE[X] >>> ContentFlow::onVideoStateChange: ERROR: " ; m.videoPlayer.errorStr
+        tearDown()
+        m.top.event = { trigger: "cancelStream" }
+    end if
 end sub
 
 '----------------------------------------------------------------------------------
@@ -258,11 +295,14 @@ sub preprocessVmapData(vmapJson as object)
                     newPod.truexParameters = adEntry.adParameters
                 else if adEntry.adType = "video" then
                     ' set up the video ads as a ContentNode playlist that will later be fed to the video player
-                    adContentNode = newPod.videoAdPlaylist.createChild("ContentNode")
+                    ? "TRUE[X] >>> ContentFlow::preprocessVmapData, adding video ad #" ; j + 1 ; ", url: "; adEntry.adParameters.url ; ", title: " ; adEntry.adParameters.title
+                    ' adContentNode = newPod.videoAdPlaylist.createChild("ContentNode")
+                    adContentNode = CreateObject("roSGNode", "ContentNode")
                     adContentNode.url = adEntry.adParameters.url
                     adContentNode.title = adEntry.adParameters.title
                     adContentNode.streamFormat = "mp4"
-                    adContentNode.playStart = 0                    
+                    adContentNode.playStart = 0
+                    newPod.videoAdPlaylist.appendChild(adContentNode)
                 end if                
             end for
 
@@ -303,18 +343,30 @@ sub resumeVideoStream()
     if m.videoPlayer <> invalid then
         m.videoPlayer.SetFocus(true)
         if m.skipAds then
-            ' resume playback from the appropriate post true[X] card point (opt-out case) or for a completed ad (opt-in + complete)
-            m.videoPlayer.control = "play"
-            m.videoPlayer.seek = m.videoPositionAtAdBreakPause
-            ? "TRUE[X] >>> ContentFlow::resumeVideoStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(m.videoPositionAtAdBreakPause) + ")"
+            ' skipping ads in this CSAI example simply involves resuming the original, ad free content stream
+            resumeContentStream()
         else
-            ' do not touch playhead if opted out by auto-advancing past the card point
-            ? "TRUE[X] >>> ContentFlow::resumeVideoStream, playing ads (position=" + StrI(m.videoPlayer.position) + ")"
+            ' else launch the current batch of video ads from the currently active pod
+            ? "TRUE[X] >>> ContentFlow::resumeVideoStream, playing video ads (position=" + StrI(m.videoPlayer.position) + ")"
+            launchVideoAds()
         end if
         m.skipAds = false
         m.currentAdBreak = invalid
-        m.videoPositionAtAdBreakPause = invalid
+        ' m.videoPositionAtAdBreakPause = invalid
     end if
+end sub
+
+sub resumeContentStream()
+    videoContent = CreateObject("roSGNode", "ContentNode")
+    videoContent.url = m.streamUrl
+    videoContent.title = m.streamData.title
+    videoContent.streamFormat = "mp4"
+    videoContent.playStart = 0
+    m.videoPlayer.content = videoContent
+
+    m.videoPlayer.control = "play"
+    m.videoPlayer.seek = m.videoPositionAtAdBreakPause
+    ? "TRUE[X] >>> ContentFlow::resumeContentStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(m.videoPositionAtAdBreakPause) + ")"
 end sub
 
 '-----------------------------------------------------------------------------
@@ -340,6 +392,7 @@ sub beginStream(url as string)
     m.videoPlayer.retrievingBarVisibilityAuto = false
     m.videoPlayer.bufferingBarVisibilityAuto = false
     m.videoPlayer.observeFieldScoped("position", "onVideoPositionChange")
+    m.videoPlayer.observeFieldScoped("state", "onVideoStateChange")
     m.videoPlayer.control = "play"
     m.videoPlayer.EnableCookies()
 end sub
