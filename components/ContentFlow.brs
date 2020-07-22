@@ -241,23 +241,41 @@ sub preprocessVmapData(vmapJson as object)
 
     for i = 0 to vmapJson.Count() - 1
         vmapEntry = vmapJson[i]
+        newPod = {}
         timeOffset = vmapEntry.timeOffset
-        duration = vmapEntry.cardDuration
-        videoAdDuration = vmapEntry.videoAdDuration
+        breakId = vmapEntry.breakId
+        podAds = vmapEntry.ads
 
-        if timeOffset <> invalid and duration <> invalid then
-            ' trim ms portion
+        if timeOffset <> invalid and breakId <> invalid and podAds <> invalid then
+            newPod.timeOffset = timeOffset
+            newPod.breakId = breakId
+            
+            ' parse out the ad insertion point
             timeOffset = timeOffset.Left(8)
             timeOffsetComponents = timeOffset.Split(":")
             timeOffsetSecs = timeOffsetComponents[2].ToInt() + timeOffsetComponents[1].ToInt() * 60 + timeOffsetComponents[0].ToInt() * 3600
-            timeOffsetEnd = timeOffsetSecs + duration.ToInt()
-            ? "TRUE[X] >>> ContentFlow::preprocessVmapData, #" ; i + 1 ; ", timeOffset: "; timeOffset ; ", start: " ; timeOffsetSecs ; " end: " timeOffsetEnd
-            vmapEntry.startOffset = timeOffsetSecs
-            vmapEntry.endOffset = timeOffsetEnd
-            vmapEntry.cardDuration = duration.ToInt()
-            vmapEntry.videoAdDuration = videoAdDuration.ToInt()
-            vmapEntry.podindex = i
-            m.vmap.Push(vmapEntry)
+            ? "TRUE[X] >>> ContentFlow::preprocessVmapData, #" ; i + 1 ; ", timeOffset: "; timeOffset ; ", start: " ; timeOffsetSecs
+            newPod.startOffset = timeOffsetSecs
+            newPod.podindex = i
+            newPod.videoAdPlaylist = createObject("RoSGNode", "ContentNode")            
+
+            for j = 0 to podAds.Count() - 1
+                adEntry = podAds[j]
+                
+                if adEntry.adType = "truex" then
+                    ' separate out true[X] ad from the standard video ads
+                    newPod.truexParameters = adEntry.adParameters
+                else if adEntry.adType = "video" then
+                    ' set up the video ads as a ContentNode playlist that will later be fed to the video player
+                    adContentNode = newPod.videoAdPlaylist.createChild("ContentNode")
+                    adContentNode.url = adEntry.adParameters.url
+                    adContentNode.title = adEntry.adParameters.title
+                    adContentNode.streamFormat = "mp4"
+                    adContentNode.playStart = 0                    
+                end if                
+            end for
+
+            m.vmap.Push(newPod)
         end if
     end for
 end sub
@@ -310,8 +328,6 @@ end sub
 
 '-----------------------------------------------------------------------------
 ' Creates a ContentNode with the provided URL and starts the video player.
-'
-' If the IMA task has a bookmarked position the video stream will seek to it.
 '
 ' Params:
 '   url as string - the URL of the stream to play
