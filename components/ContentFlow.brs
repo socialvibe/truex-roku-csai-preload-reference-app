@@ -18,6 +18,7 @@ sub init()
 
     ' get reference to video player
     m.videoPlayer = m.top.findNode("videoPlayer")
+    m.skipAds = false
 
     ? "TRUE[X] >>> ContentFlow::init() - starting video stream=";m.streamData;"..."
     beginStream(m.streamData.url)
@@ -64,7 +65,8 @@ sub onTruexEvent(event as object)
         ' this event is triggered when a user has completed all the true[X] engagement criteria
         ' this entails interacting with the true[X] ad and viewing it for X seconds (usually 30s)
         ' user has earned credit for the engagement, set seek duration to skip the entire ad break
-        m.streamSeekDuration = m.streamSeekDuration + m.currentAdBreak.videoAdDuration
+        ' m.streamSeekDuration = m.streamSeekDuration + m.currentAdBreak.videoAdDuration
+        m.skipAds = true
     else if data.type = "adStarted" then
         ' this event is triggered when the true[X] Choice Card is presented to the user
     else if data.type = "adFetchCompleted" then
@@ -72,12 +74,8 @@ sub onTruexEvent(event as object)
     else if data.type = "optOut" then
         ' this event is triggered when a user decides not to view a true[X] interactive ad
         ' that means the user was presented with a Choice Card and opted to watch standard video ads
-        if not data.userInitiated then
-            m.skipSeek = true
-        end if
     else if data.type = "optIn" then
         ' this event is triggered when a user decides opt-in to the true[X] interactive ad
-        m.videoPlayer.control = "stop"
     else if data.type = "adCompleted" then
         ' this event is triggered when TruexAdRenderer is done presenting the ad
         ' if the user earned credit (via "adFreePod") their content will already be seeked past the ad break
@@ -94,7 +92,6 @@ sub onTruexEvent(event as object)
     else if data.type = "userCancel" then
         ' This event will fire when a user backs out of the true[X] interactive ad unit after having opted in. 
         ' Here we need to seek back to the beginning of the true[X] video choice card asset
-        m.streamSeekDuration = 0
         resumeVideoStream()
     else if data.type = "userCancelStream" then
         ' this event is triggered when the user performs an action interpreted as a request to end the video playback
@@ -120,7 +117,7 @@ sub launchTruexAd()
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
 
     ' Hedge against Roku playhead imprecision by adding buffer so that non choice card content is not shown
-    ' m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
+    m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
     ' Note: bumping the seek interval as the Roku player seems to have trouble seeking ahead to a specific time based on the type of stream.
     ' m.streamSeekDuration = decodedData.cardDuration + 3
     ' Populating the test ad from the local mock payload
@@ -144,6 +141,7 @@ sub launchTruexAd()
         channelWidth: 1280, ' Optional parameter, set the width in pixels of the channel's interface, defaults to 1920
         channelHeight: 720 ' Optional parameter, set the height in pixels of the channel's interface, defaults to 1080
     }
+
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - initializing TruexAdRenderer with action=";tarInitAction
     m.adRenderer.action = tarInitAction
 
@@ -304,18 +302,17 @@ sub resumeVideoStream()
 
     if m.videoPlayer <> invalid then
         m.videoPlayer.SetFocus(true)
-        if m.skipSeek = invalid then
+        if m.skipAds then
             ' resume playback from the appropriate post true[X] card point (opt-out case) or for a completed ad (opt-in + complete)
             m.videoPlayer.control = "play"
-            m.videoPlayer.seek = m.videoPositionAtAdBreakPause + m.streamSeekDuration
-            ? "TRUE[X] >>> ContentFlow::resumeVideoStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(m.videoPositionAtAdBreakPause + m.streamSeekDuration) + ")"
+            m.videoPlayer.seek = m.videoPositionAtAdBreakPause
+            ? "TRUE[X] >>> ContentFlow::resumeVideoStream(position=" + StrI(m.videoPlayer.position) + ", seek=" + StrI(m.videoPositionAtAdBreakPause) + ")"
         else
             ' do not touch playhead if opted out by auto-advancing past the card point
-            ? "TRUE[X] >>> ContentFlow::resumeVideoStream, skipped seek (position=" + StrI(m.videoPlayer.position) + ")"
+            ? "TRUE[X] >>> ContentFlow::resumeVideoStream, playing ads (position=" + StrI(m.videoPlayer.position) + ")"
         end if
-        m.skipSeek = invalid
+        m.skipAds = false
         m.currentAdBreak = invalid
-        m.streamSeekDuration = invalid
         m.videoPositionAtAdBreakPause = invalid
     end if
 end sub
