@@ -1,0 +1,9 @@
+\.DS_Store
+
+# Generated files
+\.rokuTarget
+*.zip
+dist/
+staging/
+
+*.code-workspace
