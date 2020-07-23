@@ -20,9 +20,9 @@ sub setChannelWidthHeightFromRootScene()
     ' overwrite defaults using Scene.currentDesignResolution values, if available
     if m.top.getScene() <> invalid then designResolution = m.top.getScene().currentDesignResolution
     if designResolution <> invalid then
-        ? "TRUE[X] >>> GlobalUtils::setChannelWidthHeightFromRootScene() - setting from Scene's design resolution..."
         channelWidth = designResolution.width
         channelHeight = designResolution.height
+        ? "TRUE[X] >>> GlobalUtils::setChannelWidthHeightFromRootScene() - setting from Scene's design resolution... (" ; channelWidth ; ", " ; channelHeight ; ")"
     end if
 
     ' safely set the m.global channelWidth and channelHeight fields
