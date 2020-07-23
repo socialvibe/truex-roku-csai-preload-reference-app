@@ -18,6 +18,6 @@ In `resumeVideoStream` we resume playback of the ad free content stream, or the 
 
 ## Preloading
 
-This channel also demonstrates how to preload true[X] ads. This is simply accomplished by initializing, but not starting a truexAdRenderer instance. 
+This channel also demonstrates how to preload true[X] ads. This is simply accomplished by initializing, but not yet starting a truexAdRenderer instance. 
 
 This logic can be found in `onVideoPositionChange`. We create and add the renderer to the scene ahead of time (by 2 mins in this example), however only start it when we get to the appropriate ad insertion point.
