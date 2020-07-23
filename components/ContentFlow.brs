@@ -187,21 +187,31 @@ sub onVideoPositionChange()
 
     ' Check to see if playback has entered a true[X] spot, and if so, start true[X].
     for each vmapEntry in m.vmap
-        if vmapEntry.startOffset <> invalid and vmapEntry.played <> invalid then
+        if vmapEntry.startOffset <> invalid and vmapEntry.played <> invalid and vmapEntry.preloaded <> invalid then
+            ' see if we have an incoming pod with a true[X] within the next 2 minutes, and if so, preload it
+            if m.videoPlayer.position + 120 >= vmapEntry.startOffset and not vmapEntry.preloaded then
+                ' we have entered an non preloaded ad pod, trigger preloading of true[X] ad
+                ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: hit a pod for preloading: " ; vmapEntry
+                vmapEntry.preloaded = true
+                m.currentAdBreak = vmapEntry
+
+                ' Preload true[X] ads if they were defined (returned from the ad server or CMS in a real world scenario).
+                if vmapEntry.truexParameters <> invalid and m.adRenderer = invalid then
+                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: preloading true[X] tag with parameters: " ; vmapEntry.truexParameters
+                    preloadTruexAd()
+                end if
+            end if 
+
             if m.videoPlayer.position >= vmapEntry.startOffset and not vmapEntry.played then
                 ' we have entered an unplayed ad pod, stop main stream and trigger ads
-                ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: hit a pod: " ; vmapEntry
+                ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: hit a pod for starting: " ; vmapEntry
                 vmapEntry.played = true
-                m.currentAdBreak = vmapEntry
                 m.videoPlayer.control = "stop"
 
-                ' Launch true[X] ads if they were defined (returned from the ad server or CMS in a real world scenario).
-                ' Alternatively fall back to video ads.
+                ' Start true[X] ads, alternatively fall back to video ads.
                 if vmapEntry.truexParameters <> invalid then
-                    if m.adRenderer = invalid then
-                        ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
-                        launchTruexAd()
-                    end if
+                    ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
+                    launchTruexAd()
                 else if vmapEntry.videoAdPlaylist <> invalid then
                     launchVideoAds()
                 end if                
@@ -294,6 +304,7 @@ sub preprocessVmapData(vmapJson as object)
             newPod.timeOffset = timeOffset
             newPod.breakId = breakId
             newPod.played = false
+            newPod.preloaded = false
             
             ' parse out the ad insertion point and turn into seconds
             timeOffset = timeOffset.Left(8)
