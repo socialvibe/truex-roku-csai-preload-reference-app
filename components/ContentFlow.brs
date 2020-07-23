@@ -108,24 +108,18 @@ sub onTruexEvent(event as object)
     end if
 end sub
 
-'--------------------------------------------------------------------------------------------------------
-' Launches the true[X] renderer based on the current ad break as detected by onVideoPositionChange
-'--------------------------------------------------------------------------------------------------------
-sub launchTruexAd()
-    ? "TRUE[X] >>> ContentFlow::launchTruexAd()"
+sub preloadTruexAd()
+    ? "TRUE[X] >>> ContentFlow::preloadTruexAd()"
 
     decodedData = m.currentAdBreak
     if decodedData = invalid then return
 
-    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
-
-    ' Hedge against Roku playhead imprecision by adding buffer so that non choice card content is not shown
-    m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
+    ? "TRUE[X] >>> ContentFlow::preloadTruexAd() - ad break: " ; decodedData
 
     ' Populating the test ad from the pod parsed out from `preprocessVmapData()`
     adPayload = decodedData.truexParameters
 
-    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - instantiating TruexAdRenderer ComponentLibrary..."
+    ? "TRUE[X] >>> ContentFlow::preloadTruexAd() - instantiating TruexAdRenderer ComponentLibrary..."
 
     ' instantiate TruexAdRenderer and register for event updates
     m.adRenderer = m.top.createChild("TruexLibrary:TruexAdRenderer")
@@ -142,8 +136,23 @@ sub launchTruexAd()
         channelHeight: 720 ' Optional parameter, set the height in pixels of the channel's interface, defaults to 1080
     }
 
-    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - initializing TruexAdRenderer with action=";tarInitAction
+    ? "TRUE[X] >>> ContentFlow::preloadTruexAd() - initializing TruexAdRenderer with action=";tarInitAction
     m.adRenderer.action = tarInitAction
+end sub
+
+'--------------------------------------------------------------------------------------------------------
+' Launches the true[X] renderer based on the current ad break as detected by onVideoPositionChange
+'--------------------------------------------------------------------------------------------------------
+sub launchTruexAd()
+    ? "TRUE[X] >>> ContentFlow::launchTruexAd()"
+
+    ' Preload on the fly if true[X] not "warm" already.
+    if m.adRenderer = invalid then preloadTruexAd()
+
+    ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting ad at video position: ";m.videoPlayer.position
+
+    ' Hedge against Roku playhead imprecision by adding buffer so that non choice card content is not shown
+    m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
 
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - starting TruexAdRenderer..."
     m.adRenderer.action = { type: "start" }
