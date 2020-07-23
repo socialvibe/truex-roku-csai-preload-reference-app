@@ -16,14 +16,15 @@ sub init()
     ' streamInfo must be provided by the global node before instantiating ContentFlow
     if not unpackStreamInformation() then return
 
-    ' get reference to video player
+    ' store reference to video player
     m.videoPlayer = m.top.findNode("videoPlayer")
+    ' tracks whether an `adFreePod` was received from true[X] which should skip the rest of the ads in a pod
     m.skipAds = false
+    ' tracks whether a pod of standard video ads is currently playing, so that true[X] ads do not get triggered
     m.playingVideoAds = false
-    m.streamUrl = m.streamData.url
 
     ? "TRUE[X] >>> ContentFlow::init() - starting video stream=";m.streamData;"..."
-    beginStream(m.streamUrl)
+    beginStream(m.streamData.url)
 end sub
 
 '-------------------------------------------
@@ -41,6 +42,7 @@ end function
 
 '------------------------------------------------------------------------------------------------
 ' Callback triggered when TruexAdRenderer updates its 'event' field.
+' Full documentation for the below events can be found here: https://github.com/socialvibe/truex-roku-integrations/blob/develop/DOCS.md
 '
 ' The following event types are supported:
 '   * adFreePod - user has met engagement requirements, skips past remaining pod ads
@@ -66,8 +68,7 @@ sub onTruexEvent(event as object)
     if data.type = "adFreePod" then
         ' this event is triggered when a user has completed all the true[X] engagement criteria
         ' this entails interacting with the true[X] ad and viewing it for X seconds (usually 30s)
-        ' user has earned credit for the engagement, set seek duration to skip the entire ad break
-        ' m.streamSeekDuration = m.streamSeekDuration + m.currentAdBreak.videoAdDuration
+        ' user has earned credit for the engagement, ensure video ads are skipped when stream is resumed
         m.skipAds = true
     else if data.type = "adStarted" then
         ' this event is triggered when the true[X] Choice Card is presented to the user
@@ -76,12 +77,13 @@ sub onTruexEvent(event as object)
     else if data.type = "optOut" then
         ' this event is triggered when a user decides not to view a true[X] interactive ad
         ' that means the user was presented with a Choice Card and opted to watch standard video ads
+        ' we should resume the stream from the video ads
     else if data.type = "optIn" then
         ' this event is triggered when a user decides opt-in to the true[X] interactive ad
     else if data.type = "adCompleted" then
         ' this event is triggered when TruexAdRenderer is done presenting the ad
-        ' if the user earned credit (via "adFreePod") their content will already be seeked past the ad break
-        ' if the user has not earned credit their content will resume at the beginning of the ad break
+        ' if the user earned credit (via "adFreePod") their content will be seeked past the ad break
+        ' if the user has not earned credit they will resume at the beginning of the ad break
         resumeVideoStream()
     else if data.type = "adError" then
         ' this event is triggered whenever TruexAdRenderer encounters an error
@@ -93,8 +95,7 @@ sub onTruexEvent(event as object)
         resumeVideoStream()
     else if data.type = "userCancel" then
         ' This event will fire when a user backs out of the true[X] interactive ad unit after having opted in. 
-        ' Here we need to seek back to the beginning of the true[X] video choice card asset
-        resumeVideoStream()
+        ' The flow goes back to the Choice Card opt-in flow within the true[X] experience.
     else if data.type = "userCancelStream" then
         ' this event is triggered when the user performs an action interpreted as a request to end the video playback
         ' this event can be disabled by adding supportsUserCancelStream=false to the TruexAdRenderer init payload
@@ -120,11 +121,8 @@ sub launchTruexAd()
 
     ' Hedge against Roku playhead imprecision by adding buffer so that non choice card content is not shown
     m.videoPositionAtAdBreakPause = m.videoPlayer.position + 0.5
-    ' Note: bumping the seek interval as the Roku player seems to have trouble seeking ahead to a specific time based on the type of stream.
-    ' m.streamSeekDuration = decodedData.cardDuration + 3
-    ' Populating the test ad from the local mock payload
-    ' In a real world situation, the adParameters returned from the ad server will be populated similarly 
-    ' for the One Stage type integration we're demonstrating here.
+
+    ' Populating the test ad from the pod parsed out from `preprocessVmapData()`
     adPayload = decodedData.truexParameters
 
     ? "TRUE[X] >>> ContentFlow::launchTruexAd() - instantiating TruexAdRenderer ComponentLibrary..."
@@ -153,15 +151,16 @@ sub launchTruexAd()
     m.adRenderer.SetFocus(true)
 end sub
 
+'--------------------------------------------------------------------------------------------------------
+' Launches video ads used when a viewer opted out of true[X], ads were not available or in case of error.
+'--------------------------------------------------------------------------------------------------------
 sub launchVideoAds()
     ? "TRUE[X] >>> ContentFlow::launchVideoAds()"
 
     decodedData = m.currentAdBreak
     if decodedData = invalid then return
 
-    ? "TRUE[X] >>> ContentFlow::launchVideoAds() - starting ad at video position: ";m.videoPlayer.position;" ad break: " ; decodedData
-    ? "TRUE[X] >>> ContentFlow::launchVideoAds() - ad content nodes: " ; decodedData.videoAdPlaylist.getChildCount()
-
+    ' Use the video ad playlist parsed out for this pod in `preprocessVmapData()`
     m.videoPlayer.content = decodedData.videoAdPlaylist
     m.videoPlayer.contentIsPlaylist = true
     m.videoPlayer.position = 0
@@ -177,18 +176,18 @@ sub onVideoPositionChange()
     ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: " + Str(m.videoPlayer.position) + " duration: " + Str(m.videoPlayer.duration)
     if m.vmap = invalid or m.vmap.Count() = 0 or m.playingVideoAds then return
 
-    playheadInPod = false
-
     ' Check to see if playback has entered a true[X] spot, and if so, start true[X].
     for each vmapEntry in m.vmap
         if vmapEntry.startOffset <> invalid and vmapEntry.played <> invalid then
             if m.videoPlayer.position >= vmapEntry.startOffset and not vmapEntry.played then
-                ' we have entered one of the defined ad pods, stop main stream and trigger ads
+                ' we have entered an unplayed ad pod, stop main stream and trigger ads
                 ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: hit a pod: " ; vmapEntry
                 vmapEntry.played = true
                 m.currentAdBreak = vmapEntry
                 m.videoPlayer.control = "stop"
 
+                ' Launch true[X] ads if they were defined (returned from the ad server or CMS in a real world scenario).
+                ' Alternatively fall back to video ads.
                 if vmapEntry.truexParameters <> invalid then
                     if m.adRenderer = invalid then
                         ? "TRUE[X] >>> ContentFlow::onVideoPositionChange: launching true[X] tag with parameters: " ; vmapEntry.truexParameters
@@ -200,10 +199,12 @@ sub onVideoPositionChange()
             end if
         end if 
     end for
-
-    m.lastVideoPosition = m.videoPlayer.position
 end sub
 
+'--------------------------------------------------------------------------------------------------------
+' Callback triggered when the video player's state changes. Used to transition from the video ad pod back
+' to the content stream when the former completes playback.
+''--------------------------------------------------------------------------------------------------------
 sub onVideoStateChange()
     ? "TRUE[X] >>> ContentFlow::onVideoStateChange: " ; m.videoPlayer.state ; " contentIndex: " ; m.videoPlayer.contentIndex
 
@@ -212,6 +213,7 @@ sub onVideoStateChange()
             m.playingVideoAds = false
             resumeContentStream()
         else
+            ' Content stream completed playback, return to the parent scene.
             tearDown()
             m.top.event = { trigger: "cancelStream" }
         end if
@@ -242,6 +244,8 @@ function unpackStreamInformation() as boolean
         return false
     end if
 
+    ' extract out ad pods and their contents - simulates the kind of data a CMS or ad server would provide
+    ' in a real world context.
     preprocessVmapData(jsonStreamInfo.vmap)
 
     ' define the test stream
@@ -258,9 +262,12 @@ end function
 
 '----------------------------------------------------------------------------------
 ' Parses out the configured stream playlist ad pods into data structures used at
-' runtime. These pods are defined in the res/reference-app-streams.json and 
-' emulate what would come down from an SSAI stack or ad server as the playlist
+' runtime. These pods are defined in the res/reference-app-streams.json file and 
+' emulate what would come down from a CMS or ad server as the playlist
 ' of ads for the current stream.
+' 
+' The extracted pods will be "client side inserted" as the playhead crosses 
+' past the `timeOffset` defined in said pod.
 '----------------------------------------------------------------------------------
 sub preprocessVmapData(vmapJson as object)
     if vmapJson = invalid or Type(vmapJson) <> "roArray" return
@@ -279,25 +286,27 @@ sub preprocessVmapData(vmapJson as object)
             newPod.breakId = breakId
             newPod.played = false
             
-            ' parse out the ad insertion point
+            ' parse out the ad insertion point and turn into seconds
             timeOffset = timeOffset.Left(8)
             timeOffsetComponents = timeOffset.Split(":")
             timeOffsetSecs = timeOffsetComponents[2].ToInt() + timeOffsetComponents[1].ToInt() * 60 + timeOffsetComponents[0].ToInt() * 3600
             ? "TRUE[X] >>> ContentFlow::preprocessVmapData, #" ; i + 1 ; ", timeOffset: "; timeOffset ; ", start: " ; timeOffsetSecs
             newPod.startOffset = timeOffsetSecs
             newPod.podindex = i
+            ' define the video ad playlist for this pod
             newPod.videoAdPlaylist = createObject("RoSGNode", "ContentNode")      
 
+            ' Populate the ads in this pod.
+            ' For simplicity, the true[X] ad is stored here as its `adParameters` structure which would normally get returned 
+            ' via the channel's ad server hitting true[X]'s own ad server VAST endpoint.
+            ' The video ads are instantiated directly as a `ContentNode` playlist ready to be fed to Roku's video player.
             for j = 0 to podAds.Count() - 1
                 adEntry = podAds[j]
                 
                 if adEntry.adType = "truex" then
-                    ' separate out true[X] ad from the standard video ads
                     newPod.truexParameters = adEntry.adParameters
                 else if adEntry.adType = "video" then
-                    ' set up the video ads as a ContentNode playlist that will later be fed to the video player
                     ? "TRUE[X] >>> ContentFlow::preprocessVmapData, adding video ad #" ; j + 1 ; ", url: "; adEntry.adParameters.url ; ", title: " ; adEntry.adParameters.title
-                    ' adContentNode = newPod.videoAdPlaylist.createChild("ContentNode")
                     adContentNode = CreateObject("roSGNode", "ContentNode")
                     adContentNode.url = adEntry.adParameters.url
                     adContentNode.title = adEntry.adParameters.title
@@ -324,11 +333,17 @@ function getCurrentAdBreakSlotType() as dynamic
     if m.currentAdBreak.podindex > 0 then return "midroll" else return "preroll"
 end function
 
+'-----------------------------------------------------------------------------------
+' Clean up after the viewer stops or ends this stream.
+'-----------------------------------------------------------------------------------
 sub tearDown()
     destroyTruexAdRenderer()
     if m.videoPlayer <> invalid then m.videoPlayer.control = "stop"
 end sub
 
+'-----------------------------------------------------------------------------------
+' Clean up true[X] renderer.
+'-----------------------------------------------------------------------------------
 sub destroyTruexAdRenderer()
     if m.adRenderer <> invalid then
         m.adRenderer.SetFocus(false)
@@ -338,6 +353,12 @@ sub destroyTruexAdRenderer()
     end if
 end sub
 
+'-----------------------------------------------------------------------------------
+' Resume playback of the viewing session, called after true[X] flow ends.
+'
+' Either pick up from the content stream, assuming we are skipping over ads, 
+' alternatively launch the video ads.
+'-----------------------------------------------------------------------------------
 sub resumeVideoStream()
     destroyTruexAdRenderer()
 
@@ -353,13 +374,16 @@ sub resumeVideoStream()
         end if
         m.skipAds = false
         m.currentAdBreak = invalid
-        ' m.videoPositionAtAdBreakPause = invalid
     end if
 end sub
 
+'-----------------------------------------------------------------------------------
+' Resume playback of the content stream, will seek to the point playback was interrupted 
+' from when true[X] flow was kicked off.
+'-----------------------------------------------------------------------------------
 sub resumeContentStream()
     videoContent = CreateObject("roSGNode", "ContentNode")
-    videoContent.url = m.streamUrl
+    videoContent.url = m.streamData.url
     videoContent.title = m.streamData.title
     videoContent.streamFormat = "mp4"
     videoContent.playStart = 0
