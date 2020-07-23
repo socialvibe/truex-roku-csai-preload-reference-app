@@ -15,3 +15,9 @@ This `vmap` ad playlist is marshaled through to the `ContentFlow` SceneGraph Com
 The `onTruexEvent` subroutine handles true[X] events notably keeping track of whether the viewer successfully met the completion criteria for true[X] (`adFreePod` event). 
 
 In `resumeVideoStream` we resume playback of the ad free content stream, or the current pod of video ads, depending on whether that completion criteria was met.
+
+## Preloading
+
+This channel also demonstrates how to preload true[X] ads. This is simply accomplished by initializing, but not starting a truexAdRenderer instance. 
+
+This logic can be found in `onVideoPositionChange`. We create and add the renderer to the scene ahead of time (by 2 mins in this example), however only start it when we get to the appropriate ad insertion point.
