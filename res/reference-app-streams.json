@@ -84,16 +84,6 @@
                     }
                 ]
             }
-        ],
-        "other_pod" : [
-            {
-                "breakId" : "midroll-1",
-                "timeOffset" : "00:09:52.000",
-                "cardDuration" : "15",
-                "videoAdDuration" : "92",
-                "vastPayload" : "pkg:/res/demo-ad-payload-2.json",
-                "placementHash" : "74fca63c733f098340b0a70489035d683024440d"
-            }
         ]
     }
 ]

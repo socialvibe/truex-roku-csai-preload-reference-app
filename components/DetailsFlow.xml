@@ -22,35 +22,35 @@
             <Poster
                 id="backgroundImage"
                 uri="pkg:/images/details_flow_bg_fhd.png"
-                width="1920"
-                height="1080"/>
+                width="1280"
+                height="720"/>
 
             <Poster
                 id="backgroundImage2"
                 uri="pkg:/images/details_bg_top_overlay_fhd.png"
-                width="1920"
-                height="846"/>
+                width="1280"
+                height="564"/>
 
             <Rectangle
                 id="backgroundImage3"
                 color="0x202527FF"
-                translation="[0,846]"
-                width="1920"
-                height="234"/>
+                translation="[0,564]"
+                width="1280"
+                height="156"/>
 
             <Poster
                 id="trueVisionLogo"
-                width="283"
-                height="61"
-                translation="[58,46]"
+                width="189"
+                height="41"
+                translation="[39,31]"
                 uri="pkg:/images/true-vision-logo_fhd.png"/>
 
             <LayoutGroup
                 id="detailsFlowLayout"
-                translation="[167,190]"
+                translation="[112,127]"
                 layoutDirection="vert"
                 horizAlignment="left"
-                itemSpacings="[27,42,78]">
+                itemSpacings="[18,28,52]">
 
                 <Label
                     id="detailsFlowTitle"
@@ -62,13 +62,13 @@
                         id="detailsFlowTitleFont"
                         role="font"
                         uri="pkg:/fonts/SF-Pro-Display-Heavy.otf"
-                        size="62"/>
+                        size="42"/>
 
                 </Label>
 
                 <Label
                     id="detailsFlowDescription"
-                    width="1174"
+                    width="783"
                     wrap="true"
                     numLines="2"
                     color="0xFFFFFFFF"
@@ -78,14 +78,14 @@
                         id="detailsFlowDescriptionFont"
                         role="font"
                         uri="pkg:/fonts/SF-Pro-Display-Regular.otf"
-                        size="28"/>
+                        size="19"/>
 
                 </Label>
 
                 <Button
                     id="playButton"
-                    minWidth="354"
-                    maxWidth="354"
+                    minWidth="236"
+                    maxWidth="236"
                     showFocusFootprint="true"
                     focusFootprintBitmapUri="pkg:/images/play_button_fhd.png"
                     focusBitmapUri="pkg:/images/play_button_fhd.png"
@@ -96,54 +96,54 @@
                         id="detailsFlowButtonFont"
                         role="textFont"
                         uri="pkg:/fonts/SF-Pro-Display-Heavy.otf"
-                        size="32"/>
+                        size="21"/>
 
                 </Button>
 
                 <LayoutGroup
                     id="episodeList"
                     layoutDirection="horiz"
-                    itemSpacings="[124,63,63,63,63,63,63,63,63,63,63]">
+                    itemSpacings="[83,42,42,42,42,42,42,42,42,42,42]">
 
                     <Poster
                         id="episode1"
-                        width="302"
-                        height="453"/>
+                        width="201"
+                        height="302"/>
 
                     <Rectangle
                         id="episode2"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                     <Rectangle
                         id="episode3"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                     <Rectangle
                         id="episode4"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                     <Rectangle
                         id="episode5"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                     <Rectangle
                         id="episode6"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                     <Rectangle
                         id="episode7"
-                        width="184"
-                        height="277"
+                        width="123"
+                        height="185"
                         color="0x6B6B6BFF"/>
 
                 </LayoutGroup>
