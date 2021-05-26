@@ -52,6 +52,7 @@ end function
 '   * optIn - this event is triggered when a user decides opt-in to the true[X] interactive ad
 '   * adCompleted - user has finished the true[X] engagement, resume the video stream
 '   * adError - TruexAdRenderer encountered an error presenting the ad, resume with standard ads
+'   * adsAvailable - TruexAdRenderer has an ad ready to present 
 '   * noAdsAvailable - TruexAdRenderer has no ads ready to present, resume with standard ads
 '   * userCancel - This event will fire when a user backs out of the true[X] interactive ad unit after having opted in.
 '   * userCancelStream - user has requested the video stream be stopped
@@ -89,6 +90,8 @@ sub onTruexEvent(event as object)
         ' this event is triggered whenever TruexAdRenderer encounters an error
         ' usually this means the video stream should continue with normal video ads
         resumeVideoStream()
+    else if data.type = "adsAvailable" then
+        ' this event is triggered when TruexAdRenderer receives an usable true[X] ad in the ad fetch response
     else if data.type = "noAdsAvailable" then
         ' this event is triggered when TruexAdRenderer receives no usable true[X] ad in the ad fetch response
         ' usually this means the video stream should continue with normal video ads
